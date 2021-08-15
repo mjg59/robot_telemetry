@@ -224,7 +224,7 @@ void loop() {
       readcount = 0;
       return;
     }
-    if (buf[readcount-1] != '\n') {
+    if (buf[readcount-1] != '\r') {
       return;
     }
 
@@ -237,16 +237,17 @@ void loop() {
       while (1) {
         dat = file.read();
         if (dat == -1) {
-          printing = 0;
-          return;
+          break;
         }
         Serial8.write((char *)&dat, 1);
       }
+      readcount = 0;
       printing = 0;
       return;
     } else if (wiping == 1) {
       buf[readcount-1] = '\0';
       sd.remove(buf);
+      readcount = 0;
       wiping = 0;
       return;
     } else {
@@ -336,7 +337,7 @@ void loop() {
 
   /* If we get three enters in a row on the telemetry radio, with nothing in-between, in under 2 seconds, switch to interactive mode */
   if (Serial8.available()) {
-    if (Serial8.read() == '\n') {
+    if (Serial8.read() == '\r') {
       entercount++;
       if (entertime == 0) {
         entertime = millis();
