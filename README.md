@@ -72,3 +72,98 @@ mode. In this mode no live telemetry data is sent - instead, the user can
 send commands to list the files on the SD card, dump the contents of a file
 or wipe files from the SD card. This allows recovery of logged data without
 having to disassemble the board.
+
+Radio setup
+-----------
+
+The radios use the SiK firmware. Modules need to be appropriately configured
+to communicate with each other. To program a controller, connect it (either
+directly via USB, or with a USB to serial adapter) and run
+
+```
+screen /dev/ttyUSB0 115200
+```
+
+If the controller hasn't yet been configured, you'll need to use 57600
+instead of 115200 - try both if the first doesn't work. Wait a second after
+connecting, and then rapidly type
+
+```
++++
+```
+
+and wait a second. An "OK" prompt will appear, and you are now in command
+mode. Type
+
+```
+ATI5
+```
+
+and hit enter to view the current configuration, which will look something
+like:
+
+```
+S0:FORMAT=25
+S1:SERIAL_SPEED=115
+S2:AIR_SPEED=250
+S3:NETID=25
+S4:TXPOWER=20
+S5:ECC=1
+S6:MAVLINK=1
+S7:OPPRESEND=1
+S8:MIN_FREQ=915000
+S9:MAX_FREQ=928000
+S10:NUM_CHANNELS=50
+S11:DUTY_CYCLE=100
+S12:LBT_RSSI=0
+S13:MANCHESTER=0
+S14:RTSCTS=0
+S15:MAX_WINDOW=131
+```
+
+Parameters are set by typing
+
+```
+ATSn=value
+```
+
+where n refers to the number in the ATI5 output. For example, to set
+serial_speed to 115:
+
+```
+ATS1=115
+```
+
+The important values are:
+
+* serial_speed - set to 115 (115,200 bps). This is what the software assumes.
+* air_speed - set to 250. If greater range is required, reduce this - valid values are 2, 4, 8, 16, 19, 24, 32, 48, 64, 96, 128, 192 and 250. Reducing this value will reduce available bandwidth, so only do so if necessary.
+* netid - this pairs a transmitter with a receiver, and must be the same for both.
+* ecc - set this to 1 to enable error checking and correction. This results in the actual bit rate available being half of air_speed (hence why air_speed is set to a larger value than serial_speed)
+* num_channels - set to 50
+* lbt_rssi - set to 0
+* max_window - set to 131
+
+But basically, make sure they all match. Once these values are programmed,
+save them:
+
+```
+AT&W
+```
+
+and reboot the radio
+
+```
+ATZ
+```
+
+Note that radios with different firmware versions may not be able to speak
+to each other even if all other values are set correctly! You can view the
+firmware version by running:
+
+```
+ATI
+```
+
+Alternatively, configuration can be performed with [Mission
+Planner](https://ardupilot.org/planner/docs/mission-planner-installation.html). This will also let you update firmware.
