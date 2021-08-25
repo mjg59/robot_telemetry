@@ -198,6 +198,7 @@ void serialEvent7() {
 void loop() {
   /* Variables that need to persist across iterations of the main loop */
   static int currently_writing = -1;
+  static char bridging = 0;
   static char interactive = 0;
   static char printing = 0;
   static char wiping = 0;
@@ -206,12 +207,23 @@ void loop() {
   static int readcount = 0;
   static int entertime = 0;
   static int last_x = 0, last_y = 0, last_z = 0;
+  static int vescbridge = -1;
 
   /* Variables that are only used in this iteration of the main loop */
   int i;
   unsigned int current_time = millis();
   unsigned int waiting = 0;
   signed char longest = -1;
+
+  if (vescbridge != -1) {
+      while (vescs[vescbridge].serial->available()) {
+        Serial8.write(vescs[vescbridge].serial->read());
+      }
+      while (Serial8.available()) {
+        vescs[vescbridge].serial->write(Serial8.read());
+      }
+      return;
+  }
 
   /* Interactive mode. This allows for file management without having to remove the SD card */
   if (interactive) {
@@ -228,7 +240,14 @@ void loop() {
       return;
     }
 
-    if (printing == 1) {
+    if (bridging == 1) {
+      buf[readcount-1] = '\0';
+      vescbridge = atoi(buf);
+      if (vescbridge > sizeof(vescs)) {
+        readcount = 0;
+        vescbridge = -1;
+      }
+    } else if (printing == 1) {
       ExFile file;
       int dat;
 
@@ -256,6 +275,9 @@ void loop() {
         return;
       }
       switch (buf[0]) {
+        case 'b':
+          bridging = 1;
+          break;
         case 'l':
           sd.ls(&Serial8, "/", 0);
           break;
