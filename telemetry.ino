@@ -28,11 +28,14 @@ char interactive_usage[] = "Usage: [l]ist, [p]rint, [w]ipe, e[x]it:\n";
 
 struct vescData {
   char vescnum;
-  char done;
+  char ready;
+  char writeout;
   unsigned int timestamp;
+  unsigned int waiting_timestamp;
   int length;
   int counter;
   char data[256];
+  char serial_data[256];
   HardwareSerial *serial;
 };
 
@@ -66,10 +69,6 @@ void sd_out (char *data, int len) {
 }
 
 void vescRead(struct vescData *vesc) {
-  // Don't read if we haven't been reinitialised yet
-  if (vesc->done == 1)
-      return;
-
   // Drain the port
   while (vesc->serial->available()) {
     vesc->data[vesc->counter] = vesc->serial->read();
@@ -83,11 +82,17 @@ void vescRead(struct vescData *vesc) {
       vesc->data[vesc->length++] = '-';
       vesc->data[vesc->length++] = '-';
       vesc->data[vesc->length++] = '-';
-      vesc->timestamp = millis();
-      vesc->done = 1;
+
+      if (vesc->writeout == 0) {
+        vesc->timestamp = millis();
+        memcpy(vesc->serial_data, vesc->data, vesc->length);
+      }
+
+      vesc->ready = 1;
       sd_out((char *)&vesc->vescnum, sizeof(vesc->vescnum));
       sd_out((char *)&vesc->timestamp, sizeof(vesc->timestamp));
       sd_out(vesc->data, vesc->length);
+      vescQuery(vesc);
       return;
     }
   }
@@ -95,15 +100,15 @@ void vescRead(struct vescData *vesc) {
 
 /* Write the GetValues command to the VESC */
 void vescQuery(struct vescData *vesc) {
+  vesc->counter = 0;
   vesc->serial->write(vescQueryBytes, sizeof(vescQueryBytes));
 }
 
 /* Set everything back to a reasonable default */
 void vescReinit(struct vescData *vesc) {
-  vesc->timestamp = millis();
-  vesc->counter = 0;
-  vesc->done = 0;
-  vescQuery(vesc);
+  vesc->waiting_timestamp = millis();
+  vesc->ready = 0;
+  vesc->writeout = 0;
 }
 
 void accelerometerRead() {
@@ -160,6 +165,7 @@ void setup() {
   /* Kick all the VESCs so they'll start sending us values */
   for (int i = 0; i < 4; i++) {
     vescReinit(&vescs[i]);
+    vescQuery(&vescs[i]);
   }
   Serial.print("Finished VESC init\n");
 
@@ -302,6 +308,7 @@ void loop() {
   for (i=0; i<4; i++) {
     if ((current_time - vescs[i].timestamp) > 1000) {
       vescReinit(&vescs[i]);
+      vescQuery(&vescs[i])
       if (i == currently_writing) {
         currently_writing = -1;
       }
@@ -316,9 +323,9 @@ void loop() {
       if (vescs[i].done == 0) {
         continue;
       }
-      if ((current_time - vescs[i].timestamp) > waiting) {
+      if ((current_time - vescs[i].waiting_timestamp) > waiting) {
         longest = i;
-        waiting = current_time - vescs[i].timestamp;
+        waiting = current_time - vescs[i].waiting_timestamp;
       }
     }
 
@@ -331,10 +338,13 @@ void loop() {
         Serial8.write((char *)&vescs[longest].timestamp, sizeof(vescs[longest].timestamp));
         Serial8.write(vescs[longest].data, vescs[longest].length);
         currently_writing = longest;
+
+        /* Stop updating the serial data from this VESC until writeout is complete */
+        vescs[longest].writeout = 1;
       }
     }
   } else {
-    /* Check whether writeout is complete - if so, update the state and trigger a new query */
+    /* Check whether writeout is complete - if so, update the state ready for a new query */
     if (Serial8.availableForWrite() == serial8_buf_size) {
       vescReinit(&vescs[currently_writing]);
       currently_writing = -1;
