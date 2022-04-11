@@ -32,6 +32,7 @@ struct vescData {
   char writeout;
   unsigned int timestamp;
   unsigned int waiting_timestamp;
+  unsigned int last_full_query_timestamp;
   int length;
   int counter;
   char data[256];
@@ -48,7 +49,8 @@ struct accelData {
   char terminator[4] = {'-', '-', '-', '-'};
 }  __attribute__((packed)) accelData;
 
-char vescQueryBytes[] = {0x02, 0x01, 0x04, 0x40, 0x84, 0x03};
+char vescFullQueryBytes[] = {0x02, 0x01, 0x04, 0x40, 0x84, 0x03};
+char vescMinQueryBytes[] = {0x02, 0x05, 0x32, 0x3c, 0x80, 0x18, 0x00, 0xf9, 0xe4, 0x03};
 
 struct vescData vescs[4] = {{0, 0, 0, 0, 0, {0,}, &Serial2},
 {1, 0, 0, 0, 0, {0,}, &Serial3},
@@ -100,15 +102,26 @@ void vescRead(struct vescData *vesc) {
 
 /* Write the GetValues command to the VESC */
 void vescQuery(struct vescData *vesc) {
+  unsigned int now = millis();
   vesc->counter = 0;
-  vesc->serial->write(vescQueryBytes, sizeof(vescQueryBytes));
+  if ((now - vesc->last_full_query_timestamp) > 100) {
+    vesc->last_full_query_timestamp = now;
+    vesc->serial->write(vescFullQueryBytes, sizeof(vescFullQueryBytes));
+  } else {
+    vesc->serial->write(vescMinQueryBytes, sizeof(vescMinQueryBytes));
+  }
+}
+
+void vescReady(struct vescData *vesc) {
+  vesc->waiting_timestamp = millis();
+  vesc->ready = 0;
+  vesc->writeout = 0;
 }
 
 /* Set everything back to a reasonable default */
 void vescReinit(struct vescData *vesc) {
-  vesc->waiting_timestamp = millis();
-  vesc->ready = 0;
-  vesc->writeout = 0;
+  vesc->last_full_query_timestamp = 0;
+  vescReady(vesc);
 }
 
 void accelerometerRead() {
@@ -346,7 +359,7 @@ void loop() {
   } else {
     /* Check whether writeout is complete - if so, update the state ready for a new query */
     if (Serial8.availableForWrite() == serial8_buf_size) {
-      vescReinit(&vescs[currently_writing]);
+      vescReady(&vescs[currently_writing]);
       currently_writing = -1;
     }
   }
