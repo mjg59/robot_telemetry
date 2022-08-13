@@ -29,14 +29,15 @@ char interactive_usage[] = "Usage: [l]ist, [p]rint, [w]ipe, e[x]it:\n";
 struct vescData {
   char vescnum;
   char ready;
+  char fault;
   char writeout;
   unsigned int timestamp;
   unsigned int waiting_timestamp;
   unsigned int last_full_query_timestamp;
   int length;
   int counter;
-  char data[256];
-  char serial_data[256];
+  char data[32768];
+  char serial_data[32768];
   HardwareSerial *serial;
 };
 
@@ -51,11 +52,12 @@ struct accelData {
 
 char vescFullQueryBytes[] = {0x02, 0x01, 0x04, 0x40, 0x84, 0x03};
 char vescMinQueryBytes[] = {0x02, 0x05, 0x32, 0x3c, 0x80, 0x18, 0x00, 0xf9, 0xe4, 0x03};
+char vescMotorQueryBytes[] = {0x02, 0x01, 0xfa, 0x4e, 0x55, 0x03};
 
-struct vescData vescs[4] = {{0, 0, 0, 0, 0, 0, 0, 0, {0,}, {0,}, &Serial2},
-{1, 0, 0, 0, 0, 0, 0, 0, {0,}, {0,}, &Serial3},
-{2, 0, 0, 0, 0, 0, 0, 0, {0,}, {0,}, &Serial5},
-{3, 0, 0, 0, 0, 0, 0, 0, {0,}, {0,}, &Serial7}};
+struct vescData vescs[4] = {{0, 0, 0, 0, 0, 0, 0, 0, 0, {0,}, {0,}, &Serial2},
+{1, 0, 0, 0, 0, 0, 0, 0, 0, {0,}, {0,}, &Serial3},
+{2, 0, 0, 0, 0, 0, 0, 0, 0, {0,}, {0,}, &Serial5},
+{3, 0, 0, 0, 0, 0, 0, 0, 0, {0,}, {0,}, &Serial7}};
 
 void sd_out (char *data, int len) {
   static char failed = 0;
@@ -75,11 +77,18 @@ void vescRead(struct vescData *vesc) {
   while (vesc->serial->available()) {
     vesc->data[vesc->counter] = vesc->serial->read();
     vesc->counter++;
-    if (vesc->counter == 2) {
-      vesc->length = vesc->data[1] + 5;
+    if (vesc->counter == 3) {
+      if (vesc->data[0] == 2) {
+        vesc->length = vesc->data[1] + 5;
+      } else if (vesc->data[0] == 3) {
+        vesc->length = ((vesc->data[1] << 8) | vesc->data[2]) + 5;
+      }
     }
     /* If we've read as much data as we expected to, get it ready for transmission and dump it to SD */
     if (vesc->length == vesc->counter) {
+      char command;
+      char offset;
+
       vesc->data[vesc->length++] = '-';
       vesc->data[vesc->length++] = '-';
       vesc->data[vesc->length++] = '-';
@@ -94,6 +103,24 @@ void vescRead(struct vescData *vesc) {
       sd_out((char *)&vesc->vescnum, sizeof(vesc->vescnum));
       sd_out((char *)&vesc->timestamp, sizeof(vesc->timestamp));
       sd_out(vesc->data, vesc->length);
+
+      if (vesc->data[0] == 2) {
+        command = vesc->data[2];
+        offset = 3;
+      } else if (vesc->data[0] == 3) {
+        command = vesc->data[3];
+        offset = 4;
+      }
+      if (command == 0x04) {
+        // Full data query
+        vesc->fault = vesc->data[offset + 53];
+      } else if (command == 0x32) {
+        // Selective data query
+        vesc->fault = vesc->data[offset + 17];
+      } else {
+        vesc->fault = 0;
+      }
+
       vescQuery(vesc);
       return;
     }
@@ -104,7 +131,9 @@ void vescRead(struct vescData *vesc) {
 void vescQuery(struct vescData *vesc) {
   unsigned int now = millis();
   vesc->counter = 0;
-  if ((now - vesc->last_full_query_timestamp) > 100) {
+  if (vesc->fault != 0) {
+    vesc->serial->write(vescMotorQueryBytes, sizeof(vescFullQueryBytes));
+  } else if ((now - vesc->last_full_query_timestamp) > 100) {
     vesc->last_full_query_timestamp = now;
     vesc->serial->write(vescFullQueryBytes, sizeof(vescFullQueryBytes));
   } else {
