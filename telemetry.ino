@@ -321,7 +321,7 @@ void loop() {
   for (i=0; i<4; i++) {
     if ((current_time - vescs[i].timestamp) > 1000) {
       vescReinit(&vescs[i]);
-      vescQuery(&vescs[i])
+      vescQuery(&vescs[i]);
       if (i == currently_writing) {
         currently_writing = -1;
       }
@@ -333,7 +333,7 @@ void loop() {
     /* Find the output that's been waiting the longest */
     for (i=0; i<4; i++) {
       /* Ignore anything that doesn't have a full buffer */
-      if (vescs[i].done == 0) {
+      if (vescs[i].ready == 0) {
         continue;
       }
       if ((current_time - vescs[i].waiting_timestamp) > waiting) {
