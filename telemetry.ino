@@ -52,10 +52,10 @@ struct accelData {
 char vescFullQueryBytes[] = {0x02, 0x01, 0x04, 0x40, 0x84, 0x03};
 char vescMinQueryBytes[] = {0x02, 0x05, 0x32, 0x3c, 0x80, 0x18, 0x00, 0xf9, 0xe4, 0x03};
 
-struct vescData vescs[4] = {{0, 0, 0, 0, 0, {0,}, &Serial2},
-{1, 0, 0, 0, 0, {0,}, &Serial3},
-{2, 0, 0, 0, 0, {0,}, &Serial5},
-{3, 0, 0, 0, 0, {0,}, &Serial7}};
+struct vescData vescs[4] = {{0, 0, 0, 0, 0, 0, 0, 0, {0,}, {0,}, &Serial2},
+{1, 0, 0, 0, 0, 0, 0, 0, {0,}, {0,}, &Serial3},
+{2, 0, 0, 0, 0, 0, 0, 0, {0,}, {0,}, &Serial5},
+{3, 0, 0, 0, 0, 0, 0, 0, {0,}, {0,}, &Serial7}};
 
 void sd_out (char *data, int len) {
   static char failed = 0;
